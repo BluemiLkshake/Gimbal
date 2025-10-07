@@ -90,9 +90,11 @@ depends:
 #include "Motor.hpp"
 #include "app_framework.hpp"
 #include "pid.hpp"
+#include "semaphore.hpp"
 #include "thread.hpp"
 #include "timebase.hpp"
 #include "transform.hpp"
+#include "semaphore.hpp"
 
 #define GIMBAL_MAX_SPEED (M_2PI * 1.5f)
 
@@ -205,10 +207,12 @@ class Gimbal : public LibXR::Application {
         gimbal->gyro_data_ = gyro_suber.GetData();
         gyro_suber.StartWaiting();
       }
-
+      gimbal->semaphore_.Wait(UINT32_MAX);
+      gimbal->Update();
       gimbal->UpdateSetpointFromCMD();
       gimbal->SelfResolution();
       gimbal->GravityCompensation(gimbal->accl_data_);
+      gimbal->semaphore_.Post();
       gimbal->OutputToDynamics();
     }
   }
@@ -502,4 +506,6 @@ class Gimbal : public LibXR::Application {
   Eigen::Matrix<float, 3, 1> gyro_data_, accl_data_;
   //! 欧拉角数据
   LibXR::EulerAngle<float> euler_;
+
+  LibXR::Semaphore semaphore_;
 };
