@@ -273,60 +273,82 @@ class Gimbal : public LibXR::Application {
    * @param accl_data_ 从IMU获取的加速度数据 (m/s^2)，在IMU坐标系下表示。
    */
   void GravityCompensation(Eigen::Matrix<float, 3, 1> &accl_data_) {
-    // --- 1. 计算坐标系之间的旋转矩阵 ---
-    // 计算从Pitch坐标系(P)到Yaw坐标系(Y)的旋转矩阵。
-    // 这取决于当前Pitch轴的电机角度 now_angle_pitch_。
+    // 1. 计算从Pitch坐标系(P)到Yaw坐标系(Y)的旋转矩阵
     const float cos_p = std::cos(now_angle_pitch_);
     const float sin_p = std::sin(now_angle_pitch_);
     LibXR::RotationMatrix<float> rotation_yaw_from_pitch(cos_p, 0, sin_p, 0, 1,
                                                          0, -sin_p, 0, cos_p);
 
-    // --- 2. 将加速度矢量变换到目标坐标系 ---
-    // 将IMU加速度从IMU坐标系(I)转换到Pitch坐标系(P)。
-    // rotation_pitch_from_imu_
-    // 是一个配置参数，代表了IMU相对于Pitch组件的安装姿态。
-    Eigen::Matrix<float, 3, 1> acceleration_in_pitch =
-        rotation_pitch_from_imu_ * accl_data_;
+    // 2. 坐标变换 (手动矩阵-向量乘法)
+    // 将IMU加速度从IMU坐标系转换到Pitch坐标系(P)
+    Eigen::Matrix<float, 3, 1> acceleration_in_pitch(
+        rotation_pitch_from_imu_.operator()(0, 0) * accl_data_.x() +
+            rotation_pitch_from_imu_.operator()(0, 1) * accl_data_.y() +
+            rotation_pitch_from_imu_.operator()(0, 2) * accl_data_.z(),
+        rotation_pitch_from_imu_.operator()(1, 0) * accl_data_.x() +
+            rotation_pitch_from_imu_.operator()(1, 1) * accl_data_.y() +
+            rotation_pitch_from_imu_.operator()(1, 2) * accl_data_.z(),
+        rotation_pitch_from_imu_.operator()(2, 0) * accl_data_.x() +
+            rotation_pitch_from_imu_.operator()(2, 1) * accl_data_.y() +
+            rotation_pitch_from_imu_.operator()(2, 2) * accl_data_.z());
 
-    // 将加速度从Pitch坐标系(P)转换到Yaw坐标系(Y)。
-    Eigen::Matrix<float, 3, 1> acceleration_in_yaw =
-        rotation_yaw_from_pitch * acceleration_in_pitch;
+    // 将加速度从Pitch坐标系(P)转换到Yaw坐标系(Y)
+    Eigen::Matrix<float, 3, 1> acceleration_in_yaw(
+        rotation_yaw_from_pitch(0, 0) * acceleration_in_pitch.x() +
+            rotation_yaw_from_pitch(0, 1) * acceleration_in_pitch.y() +
+            rotation_yaw_from_pitch(0, 2) * acceleration_in_pitch.z(),
+        rotation_yaw_from_pitch(1, 0) * acceleration_in_pitch.x() +
+            rotation_yaw_from_pitch(1, 1) * acceleration_in_pitch.y() +
+            rotation_yaw_from_pitch(1, 2) * acceleration_in_pitch.z(),
+        rotation_yaw_from_pitch(2, 0) * acceleration_in_pitch.x() +
+            rotation_yaw_from_pitch(2, 1) * acceleration_in_pitch.y() +
+            rotation_yaw_from_pitch(2, 2) * acceleration_in_pitch.z());
 
-    // --- 3. 计算扰动力 ---
-    // 扰动力 F_disturbance = -m * a_imu。
-    // 分别计算在Pitch系和Yaw系下表示的扰动力。
-    LibXR::Position<float> force_in_pitch =
-        -gimbal_pitch_mass_ * acceleration_in_pitch;
-    LibXR::Position<float> force_in_yaw =
-        -gimbal_pitch_mass_ * acceleration_in_yaw;
+    // 3. 计算扰动力矩
+    // 扰动力 F_disturbance = -m * a_imu
+    LibXR::Position<float> force_in_pitch(
+        acceleration_in_pitch.x() * -gimbal_pitch_mass_,
+        acceleration_in_pitch.y() * -gimbal_pitch_mass_,
+        acceleration_in_pitch.z() * -gimbal_pitch_mass_);
+    LibXR::Position<float> force_in_yaw(
+        acceleration_in_yaw.x() * -gimbal_pitch_mass_,
+        acceleration_in_yaw.y() * -gimbal_pitch_mass_,
+        acceleration_in_yaw.z() * -gimbal_pitch_mass_);
 
-    // --- 4. 计算扰动力矩 ---
-    // 在Pitch坐标系(P)下，计算作用在Pitch轴上的扰动力矩。
-    // 力臂 r 是从Pitch轴心到负载重心的向量 (radius_pitch_to_center_of_mass_)。
-    // 力矩 τ = r × F。
-    LibXR::Position<float> torque_vector_pitch =
-        radius_pitch_to_center_of_mass_.cross(force_in_pitch);
+    // 在Pitch坐标系(P)下计算Pitch轴的扰动力矩 (手动叉乘 n = r x F)
+    LibXR::Position<float> torque_vector_pitch(
+        radius_pitch_to_center_of_mass_.y() * force_in_pitch.z() -
+            radius_pitch_to_center_of_mass_.z() * force_in_pitch.y(),
+        radius_pitch_to_center_of_mass_.z() * force_in_pitch.x() -
+            radius_pitch_to_center_of_mass_.x() * force_in_pitch.z(),
+        radius_pitch_to_center_of_mass_.x() * force_in_pitch.y() -
+            radius_pitch_to_center_of_mass_.y() * force_in_pitch.x());
 
-    // 在Yaw坐标系(Y)下，计算作用在Yaw轴上的扰动力矩。
-    // 首先，计算总的力臂 r：从Yaw轴心到负载重心的向量。
-    // 这等于 "Yaw轴心到Pitch轴心的向量" +
-    // "Pitch轴心到负载重心的向量（变换到Yaw系下）"。
-    LibXR::Position<float> radius_pitch_to_center_of_mass_in_yaw =
-        rotation_yaw_from_pitch * radius_pitch_to_center_of_mass_;
-    LibXR::Position<float> radius_yaw_to_center_of_mass =
-        radius_yaw_to_pitch_ + radius_pitch_to_center_of_mass_in_yaw;
+    // 在Yaw坐标系(Y)下计算Yaw轴的扰动力矩
+    // 计算力臂 r: 从Yaw轴心到负载重心的向量
+    LibXR::Position<float> radius_pitch_to_center_of_mass_in_yaw(
+        rotation_yaw_from_pitch(0, 0) * radius_pitch_to_center_of_mass_.x(),
+        rotation_yaw_from_pitch(1, 0) * radius_pitch_to_center_of_mass_.x(),
+        rotation_yaw_from_pitch(2, 0) * radius_pitch_to_center_of_mass_.x());
+    LibXR::Position<float> radius_yaw_to_center_of_mass(
+        radius_yaw_to_pitch_.x() + radius_pitch_to_center_of_mass_in_yaw.x(),
+        radius_yaw_to_pitch_.y() + radius_pitch_to_center_of_mass_in_yaw.y(),
+        radius_yaw_to_pitch_.z() + radius_pitch_to_center_of_mass_in_yaw.z());
 
-    // 计算Yaw轴的扰动力矩 τ = r × F。
-    LibXR::Position<float> torque_vector_yaw =
-        radius_yaw_to_center_of_mass.cross(force_in_yaw);
+    // 手动叉乘 n = r x F
+    LibXR::Position<float> torque_vector_yaw(
+        radius_yaw_to_center_of_mass.y() * force_in_yaw.z() -
+            radius_yaw_to_center_of_mass.z() * force_in_yaw.y(),
+        radius_yaw_to_center_of_mass.z() * force_in_yaw.x() -
+            radius_yaw_to_center_of_mass.x() * force_in_yaw.z(),
+        radius_yaw_to_center_of_mass.x() * force_in_yaw.y() -
+            radius_yaw_to_center_of_mass.y() * force_in_yaw.x());
 
-    // --- 5. 提取有效力矩分量 ---
-    // Pitch电机绕其自身的Y轴旋转，因此我们只关心力矩向量在Y轴上的分量。
+    // Pitch电机绕其自身的Y轴旋转, 取y分量
     pitch_torque_ = torque_vector_pitch.y();
-    // Yaw电机绕其自身的Z轴旋转，因此我们只关心力矩向量在Z轴上的分量。
+    // Yaw电机绕其自身的Z轴旋转, 取z分量
     yaw_torque_ = torque_vector_yaw.z();
   }
-
   /**
    * @brief 将一个值限制在给定的最大值和最小值之间
    *
