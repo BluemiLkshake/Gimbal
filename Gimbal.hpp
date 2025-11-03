@@ -81,17 +81,11 @@ depends:
 
 #include "BMI088.hpp"
 #include "CMD.hpp"
-#include "Eigen/Core"
 #include "MadgwickAHRS.hpp"
 #include "Motor.hpp"
 #include "app_framework.hpp"
-#include "inertia.hpp"
-#include "logger.hpp"
-#include "pid.hpp"
-#include "semaphore.hpp"
-#include "thread.hpp"
-#include "timebase.hpp"
-#include "transform.hpp"
+#include "libxr_time.hpp"
+#include "mutex.hpp"
 
 #define GIMBAL_MAX_SPEED (M_2PI * 1.5f)
 
@@ -193,10 +187,10 @@ class Gimbal : public LibXR::Application {
     LibXR::Topic::ASyncSubscriber<Eigen::Matrix<float, 3, 1>> gyro_suber(
         gimbal->gyro_name_);
 
-    auto now_ = LibXR::Timebase::GetMicroseconds();
-    gimbal->dt_ = (now_ - gimbal->last_online_time_);
-    gimbal->last_online_time_ = now_;
     cmd_suber.StartWaiting();
+    accl_suber.StartWaiting();
+    euler_suber.StartWaiting();
+    gyro_suber.StartWaiting();
 
     while (true) {
       if (cmd_suber.Available()) {
@@ -216,13 +210,15 @@ class Gimbal : public LibXR::Application {
         gimbal->gyro_data_ = gyro_suber.GetData();
         gyro_suber.StartWaiting();
       }
-      gimbal->semaphore_.Wait(UINT32_MAX);
+      gimbal->mutex_.Lock();
       gimbal->Update();
       gimbal->UpdateSetpointFromCMD();
       gimbal->SelfResolution();
       gimbal->GravityCompensation(gimbal->accl_data_);
-      gimbal->semaphore_.Post();
+      gimbal->mutex_.Unlock();
       gimbal->OutputToDynamics();
+
+      gimbal->thread_.SleepUntil(gimbal->last_time_, 2.0f);
     }
   }
 
@@ -250,6 +246,10 @@ class Gimbal : public LibXR::Application {
    *
    */
   void Update() {
+    auto now = LibXR::Timebase::GetMilliseconds();
+    this->dt_ = (now - this->last_time_).ToSecondf();
+    this->last_time_ = now;
+
     motor_can1_.Update(6);
     motor_can2_.Update(5);
   }
@@ -411,7 +411,7 @@ class Gimbal : public LibXR::Application {
                          euler_.Yaw(), euler_.Pitch(), euler_.Roll());
     LibXR::STDIO::Printf("Pitch系欧拉角(deg) - Yaw:%.2f Pitch:%.2f\n",
                          current_yaw, current_pitch);
-                         
+
     // PID + 输出
     const float output_yaw = std::clamp(
         pid_omega_yaw_.Calculate(
@@ -516,17 +516,13 @@ class Gimbal : public LibXR::Application {
   //! 云台控制线程
   LibXR::Thread thread_;
 
-  //! 时间间隔 (s)
-  LibXR::MicrosecondTimestamp::Duration dt_ = 0;
-  //! 上次在线时间
-  LibXR::MicrosecondTimestamp last_online_time_ = 0;
-  //! 当前时间
-  LibXR::MicrosecondTimestamp now_ = 0;
+  LibXR::MillisecondTimestamp last_time_ = 0;
+  float dt_ = 0;
 
   //! 陀螺仪和加速度计数据
   Eigen::Matrix<float, 3, 1> gyro_data_, accl_data_;
   //! 欧拉角数据
   LibXR::EulerAngle<float> euler_;
 
-  LibXR::Semaphore semaphore_;
+  LibXR::Mutex mutex_;
 };
