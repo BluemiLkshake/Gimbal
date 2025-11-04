@@ -160,7 +160,7 @@ class Gimbal : public LibXR::Application {
     UNUSED(hw);
     UNUSED(app);
 
-    
+
     thread_.Create(this, ThreadFunction, "GimbalThread", task_stack_depth,
                    LibXR::Thread::Priority::MEDIUM);
 
@@ -222,8 +222,8 @@ class Gimbal : public LibXR::Application {
       gimbal->GravityCompensation(gimbal->accl_data_);
       gimbal->mutex_.Unlock();
       gimbal->OutputToDynamics();
-
-      gimbal->thread_.SleepUntil(gimbal->last_time_, 2.0f);
+      auto last_time = LibXR::Timebase::GetMilliseconds();
+      gimbal->thread_.SleepUntil(last_time, 2.0f);
     }
   }
 
@@ -251,12 +251,8 @@ class Gimbal : public LibXR::Application {
    *
    */
   void Update() {
-    auto now = LibXR::Timebase::GetMilliseconds();
-    this->dt_ = (now - this->last_time_).ToSecondf();
-    this->last_time_ = now;
-
-    motor_can1_.Update(6);
-    motor_can2_.Update(5);
+    motor_can1_.Update();
+    motor_can2_.Update();
   }
 
   /**
@@ -392,6 +388,9 @@ class Gimbal : public LibXR::Application {
    *
    */
   void OutputToDynamics() {
+    auto now = LibXR::Timebase::GetMicroseconds();
+    this->dt_ = (now - this->last_online_time_).ToSecondf();
+    this->last_online_time_ = now;
     MotorNearestTransposition();
 
     // 欧拉角 -> Pitch系下的姿态角
@@ -520,7 +519,7 @@ class Gimbal : public LibXR::Application {
   //! 云台控制线程
   LibXR::Thread thread_;
 
-  LibXR::MillisecondTimestamp last_time_ = 0;
+  LibXR::MicrosecondTimestamp last_online_time_ = 0;
   float dt_ = 0;
 
   //! 陀螺仪和加速度计数据
