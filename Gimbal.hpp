@@ -222,7 +222,7 @@ class Gimbal : public LibXR::Application {
       gimbal->GravityCompensation(gimbal->accl_data_);
       gimbal->mutex_.Unlock();
       gimbal->OutputToDynamics();
-      
+
       auto last_time = LibXR::Timebase::GetMilliseconds();
       gimbal->thread_.SleepUntil(last_time, 2.0f);
     }
@@ -237,8 +237,8 @@ class Gimbal : public LibXR::Application {
     float gimbal_pitch_cmd = cmd_data_.pit * this->dt_ * GIMBAL_MAX_SPEED;
 
     const float PITCH_ERR = target_angle_pitch_ - euler_.Pitch();
-    const float ENCODER_DELTA_MAX_PIT = gimbal_max_ - motor_can2_.GetAngle(5);
-    const float ENCODER_DELTA_MIN_PIT = gimbal_min_ - motor_can2_.GetAngle(5);
+    const float ENCODER_DELTA_MAX_PIT = gimbal_max_ - motor_can2_.GetRPM(5);
+    const float ENCODER_DELTA_MIN_PIT = gimbal_min_ - motor_can2_.GetRPM(5);
     const float DELTA_MAX_PIT = ENCODER_DELTA_MAX_PIT - PITCH_ERR;
     const float DELTA_MIN_PIT = ENCODER_DELTA_MIN_PIT - PITCH_ERR;
     gimbal_yaw_cmd = std::clamp(gimbal_yaw_cmd, DELTA_MIN_PIT, DELTA_MAX_PIT);
@@ -263,10 +263,10 @@ class Gimbal : public LibXR::Application {
   void SelfResolution() {
     prev_omega_pitch_ = now_omega_pitch_;
     prev_omega_yaw_ = now_omega_yaw_;
-    now_angle_pitch_ = motor_can2_.GetAngle(5);
-    now_angle_yaw_ = motor_can1_.GetAngle(6);
-    now_omega_pitch_ = motor_can2_.GetSpeed(5);
-    now_omega_yaw_ = motor_can1_.GetSpeed(6);
+    now_angle_pitch_ = motor_can2_.GetRPM(5);
+    now_angle_yaw_ = motor_can1_.GetRPM(6);
+    now_omega_pitch_ = motor_can2_.GetRPM(5);
+    now_omega_yaw_ = motor_can1_.GetRPM(6);
   }
 
   /**
@@ -377,11 +377,11 @@ class Gimbal : public LibXR::Application {
     } else if (tmp_delta_angle < -M_PI) {
       tmp_delta_angle += 2.0f * M_PI;
     }
-    target_angle_yaw_ = motor_can1_.GetAngle(6) + tmp_delta_angle;
+    target_angle_yaw_ = motor_can1_.GetRPM(6) + tmp_delta_angle;
 
     Constrain(&target_angle_pitch_, gimbal_min_, gimbal_max_);
     tmp_delta_angle = target_angle_pitch_ - now_angle_pitch_;
-    target_angle_pitch_ = -motor_can2_.GetAngle(5) + tmp_delta_angle;
+    target_angle_pitch_ = -motor_can2_.GetRPM(5) + tmp_delta_angle;
   }
 
   /**
