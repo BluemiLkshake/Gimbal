@@ -44,8 +44,8 @@ constructor_args:
       I_yaw: 0.0
       M_pitch: 0.0
       G_pitch: 0.0
-      pitch_min: 0.0
-      pitch_max: 0.0
+      imu_pitch_min: 0.0
+      imu_pitch_max: 0.0
     gimbal_cmd_name_: gimbal_cmd
     accl_name_: bmi088_accl
     euler_name_: ahrs_euler
@@ -99,10 +99,6 @@ class Gimbal : public LibXR::Application {
     float M_pitch; /* pitch的质心质量 */
     float
         G_pitch; /* pitch的质心位置，从pitch电机开始计算，模型是简化过的，用线密度估算*/
-
-    /* pitch电机的实际上下限，单位和GetAngle()一样，弧度 */
-    float pitch_min;
-    float pitch_max;
 
     /* imu视角里pitch的上下限，单位和GetAngle()一样，弧度 */
     float imu_pitch_min;
@@ -160,16 +156,15 @@ class Gimbal : public LibXR::Application {
    * @param gyro_name 陀螺仪数据主题名称
    */
   Gimbal(LibXR::HardwareContainer &hw, LibXR::ApplicationManager &app,
-              uint32_t task_stack_depth,
-              LibXR::PID<float>::Param param_pid_yaw_speed,
-              LibXR::PID<float>::Param param_pid_yaw_angle,
-              LibXR::PID<float>::Param param_pid_pitch_speed,
-              LibXR::PID<float>::Param param_pid_pitch_angle,
-              typename MotorType::RMMotor *motor_yaw,
-              typename MotorType::RMMotor *motor_pitch,
-              GimbalParam gimbal_param, const char *gimbal_cmd_name,
-              const char *accl_name, const char *euler_name,
-              const char *gyro_name)
+         uint32_t task_stack_depth,
+         LibXR::PID<float>::Param param_pid_yaw_speed,
+         LibXR::PID<float>::Param param_pid_yaw_angle,
+         LibXR::PID<float>::Param param_pid_pitch_speed,
+         LibXR::PID<float>::Param param_pid_pitch_angle,
+         typename MotorType::RMMotor *motor_yaw,
+         typename MotorType::RMMotor *motor_pitch, GimbalParam gimbal_param,
+         const char *gimbal_cmd_name, const char *accl_name,
+         const char *euler_name, const char *gyro_name)
       : pid_yaw_speed_(param_pid_yaw_speed),
         pid_yaw_angle_(param_pid_yaw_angle),
         pid_pitch_speed_(param_pid_pitch_speed),
@@ -183,7 +178,7 @@ class Gimbal : public LibXR::Application {
         gyro_name_(gyro_name) {
     UNUSED(hw);
     UNUSED(app);
-    this->thread_.Create(this, ThreadFunc, "TestGimbalThread", task_stack_depth,
+    this->thread_.Create(this, ThreadFunc, "GimbalThread", task_stack_depth,
                          LibXR::Thread::Priority::MEDIUM);
   }
 
@@ -214,15 +209,6 @@ class Gimbal : public LibXR::Application {
         gimbal_accl_subs.StartWaiting();
       }
       if (gimbal_euler_subs.Available()) {
-        /* 陀螺仪是坐标定义，电机上下限定义跟陀螺仪 */
-        // gimbal->current_state_.euler.Yaw() =
-        // gimbal_euler_subs.GetData().Yaw();
-        // gimbal->current_state_.euler.Pitch() =
-        //     gimbal->LinearMap(gimbal_euler_subs.GetData().Pitch(),
-        //               gimbal->GIMBALPARAM.imu_pitch_min,
-        //               gimbal->GIMBALPARAM.imu_pitch_max,
-        //               gimbal->GIMBALPARAM.pitch_min,
-        //               gimbal->GIMBALPARAM.pitch_max);
         gimbal->current_state_.euler = gimbal_euler_subs.GetData();
         gimbal_euler_subs.StartWaiting();
       }
@@ -240,7 +226,7 @@ class Gimbal : public LibXR::Application {
       gimbal->mtx_.Lock();
 
       gimbal->UpdateFeedBack();
-      /* [TODO] 加上判断控制源 */
+      //TODO: 加上判断控制源
       gimbal->GetGravityFeedForward(gimbal->tff_gravity_,
                                     gimbal->current_state_);
       gimbal->GetMotionalFeedForward(gimbal->tff_motion_,
@@ -260,7 +246,7 @@ class Gimbal : public LibXR::Application {
    */
   void GetGravityFeedForward(TorqueFeedForward &tff_buf,
                              const State &current_state) {
-    /* [TODO] 力控云台用的，在这里算重力前馈 */
+    //TODO:力控云台用的，在这里算重力前馈
   }
 
   /**
@@ -271,7 +257,7 @@ class Gimbal : public LibXR::Application {
    */
   void GetMotionalFeedForward(TorqueFeedForward &tff_buf,
                               const State &current_state) {
-    /* 力控云台用的，在这里算运动带来的前馈扭矩 */
+    //TODO:力控云台用的，在这里算运动带来的前馈扭矩
   }
 
   /**
@@ -305,7 +291,7 @@ class Gimbal : public LibXR::Application {
     this->pos_aim_.Pitch() =
         std::clamp(this->pos_aim_.Pitch(), this->GIMBALPARAM.imu_pitch_min,
                    this->GIMBALPARAM.imu_pitch_max);
-    /* 确定一下欧拉角和电机的反馈正不正常 */
+    //TODO:确定一下欧拉角和电机的反馈正不正常;
     this->motor_yaw_->TorqueControl(
         this->pid_yaw_speed_.Calculate(
             this->pid_yaw_angle_.Calculate(this->current_state_.euler.Yaw(),
