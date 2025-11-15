@@ -188,6 +188,7 @@ class Gimbal : public LibXR::Application {
    * @param gimbal
    */
   static void ThreadFunc(Gimbal *gimbal) {
+    auto last_time = LibXR::Timebase::GetMilliseconds();
     LibXR::Topic::ASyncSubscriber<CMD::GimbalCMD> gimbal_cmd_subs("gimbal_cmd");
     LibXR::Topic::ASyncSubscriber<Eigen::Matrix<float, 3, 1>> gimbal_accl_subs(
         "bmi088_accl");
@@ -199,6 +200,7 @@ class Gimbal : public LibXR::Application {
     gimbal_accl_subs.StartWaiting();
     gimbal_euler_subs.StartWaiting();
     gimbal_gyro_subs.StartWaiting();
+
     while (true) {
       if (gimbal_cmd_subs.Available()) {
         gimbal->gimbal_cmd_ = gimbal_cmd_subs.GetData();
@@ -234,7 +236,7 @@ class Gimbal : public LibXR::Application {
       gimbal->Control();
 
       gimbal->mtx_.Unlock();
-      LibXR::Thread::Sleep(1); /* 1KHz电流环 */
+      LibXR::Thread::SleepUntil(last_time,2); /* 1KHz电流环 */
     }
   }
 
