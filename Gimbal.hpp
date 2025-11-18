@@ -65,6 +65,7 @@ depends:
 #include <cmath>
 #include <cstdint>
 
+#include "CMD.hpp"
 #include "BMI088.hpp"
 #include "Eigen/Core"
 #include "RMMotor.hpp"
