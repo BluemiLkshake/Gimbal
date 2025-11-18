@@ -53,17 +53,11 @@ jobs:
       - name: Pull libxr to ./libxr
         run: git clone --depth=1 https://github.com/Jiu-xiao/libxr ./libxr
 
-      - name: Checkout CMD module
-        uses: actions/checkout@v4
-        with:
-          repository: QDU-Robomaster/CMD
-          path: Modules/CMD
-
       - name: Checkout Motor module
         uses: actions/checkout@v4
         with:
-          repository: QDU-Robomaster/Motor
-          path: Modules/Motor
+          repository: QDU-Robomaster/RMMotor
+          path: Modules/RMMotor
       - name: Checkout BMI088 module
         uses: actions/checkout@v4
         with:
