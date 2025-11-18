@@ -37,8 +37,8 @@ constructor_args:
       i_limit: 0.0
       out_limit: 0.0
       cycle: false
-    motor_yaw: '@motor_can2.GetMotor(8)'
-    motor_pitch: '@motor_can2.GetMotor(10)'
+    motor_yaw: '@&motor_yaw'
+    motor_pitch: '@&motor_pit'
     gimbal_param:
       I_pitch: 0.0
       I_yaw: 0.0
@@ -46,19 +46,13 @@ constructor_args:
       G_pitch: 0.0
       imu_pitch_min: 0.0
       imu_pitch_max: 0.0
-    gimbal_cmd_name_: gimbal_cmd
-    accl_name_: bmi088_accl
-    euler_name_: ahrs_euler
-    gyro_name_: bmi088_gyro
-template_args:
-  - MotorType: RMMotorContainer
+template_args: []
 required_hardware:
   - cmd
   - motor_can1
   - motor_can2
   - bmi088
 depends:
-  - qdu-future/CMD
   - qdu-future/BMI088
   - qdu-future/Motor
   - xrobot-org/MadgwickAHRS
@@ -73,7 +67,7 @@ depends:
 #include "BMI088.hpp"
 #include "CMD.hpp"
 #include "Eigen/Core"
-#include "Motor.hpp"
+#include "RMMotor.hpp"
 #include "app_framework.hpp"
 #include "libxr_def.hpp"
 #include "message.hpp"
@@ -85,7 +79,6 @@ depends:
 #include "timer.hpp"
 #include "transform.hpp"
 
-template <typename MotorType>
 class Gimbal : public LibXR::Application {
  public:
   /**
@@ -160,22 +153,15 @@ class Gimbal : public LibXR::Application {
          LibXR::PID<float>::Param param_pid_yaw_speed,
          LibXR::PID<float>::Param param_pid_yaw_angle,
          LibXR::PID<float>::Param param_pid_pitch_speed,
-         LibXR::PID<float>::Param param_pid_pitch_angle,
-         typename MotorType::RMMotor *motor_yaw,
-         typename MotorType::RMMotor *motor_pitch, GimbalParam gimbal_param,
-         const char *gimbal_cmd_name, const char *accl_name,
-         const char *euler_name, const char *gyro_name)
+         LibXR::PID<float>::Param param_pid_pitch_angle, RMMotor *motor_yaw,
+         RMMotor *motor_pitch, GimbalParam gimbal_param)
       : pid_yaw_speed_(param_pid_yaw_speed),
         pid_yaw_angle_(param_pid_yaw_angle),
         pid_pitch_speed_(param_pid_pitch_speed),
         pid_pitch_angle_(param_pid_pitch_angle),
         motor_yaw_(motor_yaw),
         motor_pitch_(motor_pitch),
-        GIMBALPARAM(gimbal_param),
-        gimbal_cmd_name_(gimbal_cmd_name),
-        accl_name_(accl_name),
-        euler_name_(euler_name),
-        gyro_name_(gyro_name) {
+        GIMBALPARAM(gimbal_param){
     UNUSED(hw);
     UNUSED(app);
     this->thread_.Create(this, ThreadFunc, "GimbalThread", task_stack_depth,
@@ -326,17 +312,13 @@ class Gimbal : public LibXR::Application {
   TorqueFeedForward tff_motion_;  /* I * a */
 
   /* 电机 */
-  typename MotorType::RMMotor *motor_yaw_;
-  typename MotorType::RMMotor *motor_pitch_;
+  RMMotor *motor_yaw_;
+  RMMotor *motor_pitch_;
 
   /* 云台定义 */
   const GimbalParam GIMBALPARAM;
 
   /* 控制相关的变量 */
-  const char *gimbal_cmd_name_;
-  const char *accl_name_;
-  const char *euler_name_;
-  const char *gyro_name_;
   LibXR::EulerAngle<float> pos_aim_; /* CycleValue */
   State current_state_;              /* 当前云台的状态 */
   CMD::GimbalCMD gimbal_cmd_;
