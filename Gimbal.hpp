@@ -84,7 +84,6 @@ depends:
 #include "timebase.hpp"
 #include "timer.hpp"
 #include "transform.hpp"
-#include "matrix.h"
 class Gimbal : public LibXR::Application {
  public:
   enum class GimbalEvent : uint8_t {
