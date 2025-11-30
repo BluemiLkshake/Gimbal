@@ -39,13 +39,14 @@ constructor_args:
       cycle: false
     motor_yaw: '@&motor_yaw'
     motor_pitch: '@&motor_pit'
+    cmd: '@&cmd'
     gimbal_param:
       I_pitch: 0.0
       I_yaw: 0.0
       M_pitch: 0.0
       G_pitch: 0.0
-      imu_pitch_min: 0.0
-      imu_pitch_max: 0.0
+      pitch_min: 0.0
+      pitch_max: 0.0
 template_args: []
 required_hardware:
   - cmd
@@ -60,17 +61,21 @@ depends:
 === END MANIFEST === */
 // clang-format on
 
+#include <math.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 
-#include "CMD.hpp"
 #include "BMI088.hpp"
+#include "CMD.hpp"
 #include "Eigen/Core"
 #include "RMMotor.hpp"
 #include "app_framework.hpp"
+#include "cycle_value.hpp"
 #include "libxr_def.hpp"
+#include "libxr_time.hpp"
 #include "message.hpp"
 #include "mutex.hpp"
 #include "pid.hpp"
@@ -79,9 +84,17 @@ depends:
 #include "timebase.hpp"
 #include "timer.hpp"
 #include "transform.hpp"
-
+#include "matrix.h"
 class Gimbal : public LibXR::Application {
  public:
+  enum class GimbalEvent : uint8_t {
+    SET_MODE_RELAX,
+    SET_MODE_RELATIVE,
+  };
+  typedef enum : uint8_t {
+    RELAX,
+    RELATIVE,
+  } GimbalMode;
   /**
    * @brief 用于定义云台物理参数的结构体
    *
@@ -94,9 +107,9 @@ class Gimbal : public LibXR::Application {
     float
         G_pitch; /* pitch的质心位置，从pitch电机开始计算，模型是简化过的，用线密度估算*/
 
-    /* imu视角里pitch的上下限，单位和GetAngle()一样，弧度 */
-    float imu_pitch_min;
-    float imu_pitch_max;
+    /* pitch的上下限，单位和GetAngle()一样，弧度 */
+    float pitch_min;
+    float pitch_max;
   };
 
   /**
@@ -154,17 +167,37 @@ class Gimbal : public LibXR::Application {
          LibXR::PID<float>::Param param_pid_yaw_speed,
          LibXR::PID<float>::Param param_pid_yaw_angle,
          LibXR::PID<float>::Param param_pid_pitch_speed,
-         LibXR::PID<float>::Param param_pid_pitch_angle, RMMotor *motor_yaw,
-         RMMotor *motor_pitch, GimbalParam gimbal_param)
+         LibXR::PID<float>::Param param_pid_pitch_angle, RMMotor *motor_pitch,
+         RMMotor *motor_yaw, CMD *cmd, GimbalParam gimbal_param)
       : pid_yaw_speed_(param_pid_yaw_speed),
         pid_yaw_angle_(param_pid_yaw_angle),
         pid_pitch_speed_(param_pid_pitch_speed),
         pid_pitch_angle_(param_pid_pitch_angle),
         motor_yaw_(motor_yaw),
         motor_pitch_(motor_pitch),
-        GIMBALPARAM(gimbal_param){
+        cmd_(cmd) {
     UNUSED(hw);
     UNUSED(app);
+    UNUSED(gimbal_param);
+    auto callback = LibXR::Callback<uint32_t>::Create(
+        [](bool in_isr, Gimbal *gimbal, uint32_t event) {
+          UNUSED(in_isr);
+          gimbal->EventHandler(event);
+        },
+        this);
+    auto lost_ctrl_callback = LibXR::Callback<uint32_t>::Create(
+        [](bool in_isr, Gimbal *gimbal, uint32_t event_id) {
+          UNUSED(in_isr);
+          UNUSED(event_id);
+          gimbal->SetMode(RELAX);
+        },
+        this);
+    gimbal_event_.Register(static_cast<uint32_t>(GimbalEvent::SET_MODE_RELAX),
+                           callback);
+    gimbal_event_.Register(
+        static_cast<uint32_t>(GimbalEvent::SET_MODE_RELATIVE), callback);
+    cmd_->GetEvent().Register(CMD::CMD_EVENT_LOST_CTRL, lost_ctrl_callback);
+
     this->thread_.Create(this, ThreadFunc, "GimbalThread", task_stack_depth,
                          LibXR::Thread::Priority::MEDIUM);
   }
@@ -175,7 +208,7 @@ class Gimbal : public LibXR::Application {
    * @param gimbal
    */
   static void ThreadFunc(Gimbal *gimbal) {
-    auto last_time = LibXR::Timebase::GetMilliseconds();
+    // auto last_time = LibXR::Timebase::GetMilliseconds();
     LibXR::Topic::ASyncSubscriber<CMD::GimbalCMD> gimbal_cmd_subs("gimbal_cmd");
     LibXR::Topic::ASyncSubscriber<Eigen::Matrix<float, 3, 1>> gimbal_accl_subs(
         "bmi088_accl");
@@ -205,25 +238,15 @@ class Gimbal : public LibXR::Application {
         gimbal->current_state_.gyro = gimbal_gyro_subs.GetData();
         gimbal_gyro_subs.StartWaiting();
       }
-      gimbal->pos_aim_.Yaw() +=
-          (gimbal->gimbal_cmd_.yaw - static_cast<float>(M_2PI)) *
-          gimbal->dt_.ToSecondf() * 10;
-      gimbal->pos_aim_.Pitch() +=
-          (gimbal->gimbal_cmd_.pit - -static_cast<float>(M_2PI)) *
-          gimbal->dt_.ToSecondf() * 10;
 
-      gimbal->mtx_.Lock();
+      gimbal->mutex_.Lock();
 
       gimbal->UpdateFeedBack();
       // TODO: 加上判断控制源
-      gimbal->GetGravityFeedForward(gimbal->tff_gravity_,
-                                    gimbal->current_state_);
-      gimbal->GetMotionalFeedForward(gimbal->tff_motion_,
-                                     gimbal->current_state_);
+      gimbal->mutex_.Unlock();
       gimbal->Control();
 
-      gimbal->mtx_.Unlock();
-      LibXR::Thread::SleepUntil(last_time, 2); /* 1KHz电流环 */
+      LibXR::Thread::Sleep(3); /* 1KHz电流环 */
     }
   }
 
@@ -233,22 +256,15 @@ class Gimbal : public LibXR::Application {
    */
   void UpdateFeedBack() {
     // TODO: 通过旋转矩阵调整pit，yaw极性
-    this->now_ = LibXR::Timebase::GetMilliseconds();
-    this->dt_ = this->now_ - this->last_wakeup_;
-    this->last_wakeup_ = this->now_;
+    auto now = LibXR::Timebase::GetMilliseconds();
+    this->dt_ = (now - this->last_wakeup_).ToSecondf();
+    this->last_wakeup_ = now;
 
     this->motor_yaw_->Update();
     this->motor_pitch_->Update();
 
-    this->current_state_.yaw_feedback_.angle = this->motor_yaw_->GetAngle();
-    this->current_state_.yaw_feedback_.speed = this->motor_yaw_->GetOmega();
-    this->current_state_.yaw_feedback_.torque =
-        this->motor_yaw_->KGetTorque() * this->motor_yaw_->GetCurrent();
-
-    this->current_state_.pitch_feedback_.angle = this->motor_pitch_->GetAngle();
-    this->current_state_.pitch_feedback_.speed = this->motor_pitch_->GetOmega();
-    this->current_state_.pitch_feedback_.torque =
-        this->motor_pitch_->KGetTorque() * this->motor_pitch_->GetCurrent();
+    this->current_state_.pitch_feedback_.speed =
+      this->motor_pitch_->GetOmega();
   }
 
   /**
@@ -278,36 +294,77 @@ class Gimbal : public LibXR::Application {
    *
    */
   void Control() {
-    this->pos_aim_.Pitch() =
-        std::clamp(this->pos_aim_.Pitch(), this->GIMBALPARAM.imu_pitch_min,
-                   this->GIMBALPARAM.imu_pitch_max);
-    // TODO:确定一下欧拉角和电机的反馈正不正常;
-    this->motor_yaw_->TorqueControl(
-        this->pid_yaw_speed_.Calculate(
-            this->pid_yaw_angle_.Calculate(this->current_state_.euler.Yaw(),
-                                           this->pos_aim_.Yaw(),
-                                           this->dt_.ToSecondf()),
-            this->motor_yaw_->GetOmega(), this->dt_.ToSecondf()),
-        1);
+    static float pitch_speed_cmd = 0.0f;
+    switch (current_mode_) {
+      case RELAX:
+        this->motor_yaw_->TorqueControl(0, 1);
+        this->motor_pitch_->TorqueControl(0, 1);
 
-    this->motor_pitch_->TorqueControl(
-        this->pid_pitch_speed_.Calculate(
-            this->pid_pitch_angle_.Calculate(this->pos_aim_.Pitch(),
-                                             this->current_state_.euler.Pitch(),
-                                             this->dt_.ToSecondf()),
-            this->motor_pitch_->GetOmega(), this->dt_.ToSecondf()),
-        1);
+        break;
+      case RELATIVE: {
+        pitch_speed_cmd = this->gimbal_cmd_.pit;
+
+        // pitch_torque = this->pid_pitch_speed_.Calculate(
+        //     pitch_speed_cmd, motor_pitch_->GetOmega(), this->dt_);
+
+        this->motor_yaw_->TorqueControl(0, 1);
+        this->motor_pitch_->TorqueControl(pitch_speed_cmd, 1);
+
+        ozone_pitch_ = this->current_state_.euler.Pitch();
+        ozone_gyro_y_ = motor_pitch_->GetOmega();
+        ozone_aimp_ = pitch_speed_cmd;
+
+        break;
+      }
+      default:
+        break;
+    }
   }
 
+  /**
+   * @brief 获取底盘的事件处理器
+   * @return LibXR::Event& 事件处理器的引用
+   */
+  LibXR::Event &GetEvent() { return gimbal_event_; }
+
+  /**
+   * @brief 事件处理器，根据传入的事件ID执行相应操作
+   * @param event_id 触发的事件ID
+   */
+  void EventHandler(uint32_t event_id) {
+    switch (static_cast<GimbalEvent>(event_id)) {
+      case GimbalEvent::SET_MODE_RELAX:
+        SetMode(GimbalMode::RELAX);
+        break;
+      case GimbalEvent::SET_MODE_RELATIVE:
+        SetMode(GimbalMode::RELATIVE);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void SetMode(GimbalMode mode) {
+    mutex_.Lock();
+    current_mode_ = mode;
+    mutex_.Unlock();
+  }
   void OnMonitor() override {}
 
  private:
+  float ozone_gyro_y_ = 0.0f;
+  float ozone_pitch_ = 0.0f;
+  float ozone_aimp_ = 0.0f;
+  GimbalMode current_mode_ = GimbalMode::RELAX;
+  LibXR::Event gimbal_event_;
+
   /* PID */
   LibXR::PID<float> pid_yaw_speed_;
   LibXR::PID<float> pid_yaw_angle_;
   LibXR::PID<float> pid_pitch_speed_;
   LibXR::PID<float> pid_pitch_angle_;
-
+  LibXR::CycleValue<float> pitch_imu_;
+  LibXR::CycleValue<float> pitch_aim_;
   /* 扭矩补偿类 */
   TorqueFeedForward tff_gravity_; /* 重力矩 */
   TorqueFeedForward tff_motion_;  /* I * a */
@@ -316,8 +373,10 @@ class Gimbal : public LibXR::Application {
   RMMotor *motor_yaw_;
   RMMotor *motor_pitch_;
 
+  CMD *cmd_;
+
   /* 云台定义 */
-  const GimbalParam GIMBALPARAM;
+  // const GimbalParam GIMBALPARAM;
 
   /* 控制相关的变量 */
   LibXR::EulerAngle<float> pos_aim_; /* CycleValue */
@@ -325,10 +384,10 @@ class Gimbal : public LibXR::Application {
   CMD::GimbalCMD gimbal_cmd_;
 
   /* 线程管理 */
-  LibXR::MillisecondTimestamp now_ = 0;
   LibXR::MillisecondTimestamp last_wakeup_ = 0;
-  LibXR::MillisecondTimestamp::Duration dt_ = 0;
-  LibXR::Mutex mtx_;
+  float dt_ = 0.0;
+
+  LibXR::Mutex mutex_;
   LibXR::Thread thread_;
 
   /* 工具函数 */
