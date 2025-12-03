@@ -81,14 +81,14 @@ depends:
 #include "timer.hpp"
 #include "transform.hpp"
 
-enum class GimbalEvent : uint8_t {
-  SET_MODE_RELAX,
-  SET_MODE_COMMON,
-  SET_MODE_LOB
-};
-
 class Gimbal : public LibXR::Application {
  public:
+  enum class GimbalEvent : uint8_t {
+    SET_MODE_RELAX,
+    SET_MODE_COMMON,
+    SET_MODE_LOB
+  };
+
   typedef enum : uint8_t { RELAX, COMMON, LOB } GimbalMode;
 
   struct GimbalParam {
@@ -123,7 +123,7 @@ class Gimbal : public LibXR::Application {
          LibXR::PID<float>::Param param_pid_yaw_angle,
          LibXR::PID<float>::Param param_pid_pitch_speed,
          LibXR::PID<float>::Param param_pid_pitch_angle, RMMotor *motor_pitch,
-         RMMotor *motor_yaw,CMD *cmd,GimbalParam &&gimbal_param)
+         RMMotor *motor_yaw, CMD *cmd, GimbalParam &&gimbal_param)
       : pid_yaw_speed_(param_pid_yaw_speed),
         pid_yaw_angle_(param_pid_yaw_angle),
         pid_pitch_speed_(param_pid_pitch_speed),
@@ -158,6 +158,8 @@ class Gimbal : public LibXR::Application {
     gimbal_event_.Register(static_cast<uint32_t>(GimbalEvent::SET_MODE_COMMON),
                            callback);
 
+    cmd_->GetEvent().Register(CMD::CMD_EVENT_LOST_CTRL,lost_ctrl_callback);
+
     this->thread_.Create(this, ThreadFunc, "GimbalThread", task_stack_depth,
                          LibXR::Thread::Priority::MEDIUM);
   }
@@ -168,6 +170,7 @@ class Gimbal : public LibXR::Application {
    * @param gimbal
    */
   static void ThreadFunc(Gimbal *gimbal) {
+    // auto last_time = LibXR::Timebase::GetMilliseconds();
     LibXR::Topic::ASyncSubscriber<CMD::GimbalCMD> gimbal_cmd_subs("gimbal_cmd");
     LibXR::Topic::ASyncSubscriber<LibXR::EulerAngle<float>> gimbal_euler_subs(
         "ahrs_euler");
@@ -178,6 +181,7 @@ class Gimbal : public LibXR::Application {
     gimbal_gyro_subs.StartWaiting();
 
     while (true) {
+auto last_time = LibXR::Timebase::GetMilliseconds();
       if (gimbal_cmd_subs.Available()) {
         gimbal->gimbal_cmd_ = gimbal_cmd_subs.GetData();
         gimbal_cmd_subs.StartWaiting();
@@ -197,7 +201,7 @@ class Gimbal : public LibXR::Application {
       gimbal->mutex_.Unlock();
       gimbal->Control();
 
-      LibXR::Thread::Sleep(2); /* 1KHz电流环 */
+      LibXR::Thread::SleepUntil(last_time,2); /* 1KHz电流环 */
     }
   }
 
@@ -230,8 +234,13 @@ class Gimbal : public LibXR::Application {
         gimbal_yaw_cmd = this->gimbal_cmd_.yaw * this->dt_ * 0.1f;
       }
     } else {
-      gimbal_pit_cmd = gimbal_cmd_.pit - this->pit_;
-      gimbal_yaw_cmd = gimbal_cmd_.yaw - this->yaw_;
+      if (cmd_->GetAIGimbalStatus()) {
+        gimbal_pit_cmd = gimbal_cmd_.pit - this->pit_;
+        gimbal_yaw_cmd = gimbal_cmd_.yaw - this->yaw_;
+      } else {
+        gimbal_pit_cmd = this->gimbal_cmd_.pit * this->dt_ * 5.0f;
+        gimbal_yaw_cmd = this->gimbal_cmd_.yaw * this->dt_ * 5.0f;
+      }
     }
 
     /* 处理pitch控制命令，软件限位 */
@@ -263,9 +272,14 @@ class Gimbal : public LibXR::Application {
       }
     }
 
-    this->setpoint_pit_ += gimbal_pit_cmd;
-
-    this->setpoint_yaw_ += gimbal_yaw_cmd;
+    if (cmd_->GetCtrlMode() == CMD::Mode::CMD_OP_CTRL ||
+        !cmd_->GetAIGimbalStatus()) {
+      this->setpoint_pit_ += gimbal_pit_cmd;
+      this->setpoint_yaw_ += gimbal_yaw_cmd;
+    } else {
+      this->setpoint_pit_ = gimbal_cmd_.pit;
+      this->setpoint_yaw_ = gimbal_cmd_.yaw;
+    }
   }
   void Caculate() {
     switch (current_mode_) {
@@ -344,8 +358,12 @@ class Gimbal : public LibXR::Application {
   float AngleDistance(float a, float b) {
     float diff = b - a;
     // 规范化到 [-π, π]
-    while (diff > M_PI) {diff -= 2 * M_PI;};
-    while (diff < -M_PI) {diff += 2 * M_PI;};
+    while (diff > M_PI) {
+      diff -= 2 * M_PI;
+    };
+    while (diff < -M_PI) {
+      diff += 2 * M_PI;
+    };
     return diff;
   }
   void OnMonitor() override {}
