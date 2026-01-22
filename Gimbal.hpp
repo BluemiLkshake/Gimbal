@@ -75,7 +75,7 @@ depends: []
  * @date 2026/1/22
  * @note 前馈+pid双环控制
  * @email 有问题请联系2317235934@qq.com
- * @warning 使用前重新配置旋转矩阵
+ * @warning 使用前重新配置旋转矩阵wxyz
  * @warning 确保电机位置gyro_data.y真的对应的是你的pitch(yaw轴同理)
  * @warning yaw,pitch轴限位的值是用的6020反馈的值(0~M_2PI)
  * @warning 如果无法精确测量云台的转动惯量J从小开始调(比如0.00001)
