@@ -59,12 +59,6 @@ jobs:
           repository: QDU-Robomaster/RMMotor
           path: Modules/RMMotor
 
-      - name: Checkout DMMotor module
-        uses: actions/checkout@v4
-        with:
-          repository: QDU-Robomaster/DMMotor
-          path: Modules/DMMotor
-
       - name: Checkout CMD module
         uses: actions/checkout@v4
         with:
@@ -107,7 +101,7 @@ jobs:
       - name: Add  modules
         run: |
           xrobot_add_mod BlinkLED --instance-id BlinkLED_0
-          xrobot_add_mod DMMotor --instance-id motor_pit
+          xrobot_add_mod RMMotor --instance-id motor_pit
           xrobot_add_mod RMMotor --instance-id motor_yaw
           xrobot_add_mod BMI088 --instance-id bmi088
           xrobot_add_mod MadgwickAHRS --instance-id ahrs
