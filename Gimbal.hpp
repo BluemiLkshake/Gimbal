@@ -41,10 +41,14 @@ constructor_args:
   - motor_pitch: '@&motor_pit'
   - motor_yaw: '@&motor_yaw'
   - limit:
-      max_pitch_: 5.809
-      min_pitch_: 5.13
+      max_pitch_: 0.0
+      min_pitch_: 0.0
       max_yaw_: 0.0
       min_yaw_: 0.0
+      reverse_pitch_: false
+      reverse_yaw_: false
+      J_pitch_: 0.0f
+      J_yaw_: 0.0f
   - now_param:
       now_pitch_angle_: 0.0f;
       now_yaw_angle_: 0.0f;
@@ -62,7 +66,6 @@ constructor_args:
   - gimbal_cmd_topic_name: gimbal_cmd
   - accl_topic_name: bmi088_accl
   - euler_topic_name: ahrs_euler
-  - gyro_topic_name: bmi088_gyro
 template_args: []
 required_hardware: []
 depends: []
@@ -70,16 +73,16 @@ depends: []
 // clang-format on
 
 /**
- * @brief 雷达云台
+ * @brief 云台
  * @author BluemiLk
- * @date 2026/1/22
+ * @date 2026/1/24
  * @note 前馈+pid双环控制
  * @email 有问题请联系2317235934@qq.com
  * @warning 使用前重新配置旋转矩阵wxyz
  * @warning 确保电机位置gyro_data.y真的对应的是你的pitch(yaw轴同理)
  * @warning yaw,pitch轴限位的值是用的6020反馈的值(0~M_2PI)
  * @warning 如果无法精确测量云台的转动惯量J从小开始调(比如0.00001)
- * @version 1.2
+ * @version 1.3
  * @note 添加了自动瞄准模式，修改了控制模式处理的逻辑
  * @note 添加了使用达妙电机如何控制
  */
@@ -117,7 +120,7 @@ depends: []
 // DM4310电机最大输出扭矩值 10N*m
 #define MAX_TORQUE (10.0f)
 // 滤波器滤波系数
-#define FILTER_SIZE (5)
+#define FILTER_SIZE (6)
 
 class Gimbal : public LibXR::Application {
 public:
@@ -172,6 +175,10 @@ public:
         bool reverse_pitch_ = false;
         // 与限位有关yaw轴转动方向
         bool reverse_yaw_ = false;
+        // pitch轴转动惯量
+        float J_pitch_ = 0.0f;
+        // yaw轴转动惯量
+        float J_yaw_ = 0.0f;
     };
 
     /**
@@ -374,8 +381,8 @@ public:
         // 操作员控制模式
         if (cmd_.GetCtrlMode() == CMD::Mode::CMD_OP_CTRL) {
             // Gimbal_XXX_Cmd 角度(rad/s) | Gimbal_MAX_SPEED 灵敏度系数
-            gimbal_yaw_cmd = cmd_data_.yaw * this->dt_ * GIMBAL_MAX_SPEED * 0.05f;
-            gimbal_pitch_cmd = cmd_data_.pit * this->dt_ * GIMBAL_MAX_SPEED * 0.05f;
+            gimbal_yaw_cmd = cmd_data_.yaw * this->dt_ * GIMBAL_MAX_SPEED * 1.0f;
+            gimbal_pitch_cmd = cmd_data_.pit * this->dt_ * GIMBAL_MAX_SPEED * 1.0f;
             // 累加得到目标角度
             tar_param_.target_yaw_angle_ =
                 tar_param_.target_yaw_angle_ + gimbal_yaw_cmd;
@@ -434,12 +441,13 @@ public:
      *
      */
     void OutputToDynamics() {
-        // /*达妙电机使能标志位*/
+        /*达妙电机使能标志位*/
         /*让使能命令尽量只发一遍*/
         if (this->enable_flag_ == 1) {
             if (this->dm_motor_flag_ == 0) {
                 for (int i = 0; i < 2; i++) {
-                    //this->motor_pitch_->Enable();使用达妙电机时请解开这段注释
+                    // 达妙电机使能
+                    // 在这里添加达妙电机使能命令
                     this->dm_motor_flag_ = 1;
                 }
             }
@@ -449,13 +457,14 @@ public:
                 motor_yaw_->Relax();
                 motor_pitch_->Relax();
                 // 达妙电机失能
-                // motor_pitch_->Disable();
+                // 在这里添加达妙电机失能命令
                 enable_flag_ = 0;
                 dm_motor_flag_ = 0;
             }
                 break;
             case INDEPENDENT: {
-                // 串级PID角度外环 角速度内环 + 输出区间(正负电流*扭矩常数)
+                // 串级PID位置外环 角速度内环 + 力矩前馈
+                // 位置环+前馈
                 tar_param_.target_yaw_omega_ =
                     pid_yaw_angle_.Calculate(
                         tar_param_.target_yaw_angle_,
@@ -466,17 +475,19 @@ public:
                     tar_param_.target_yaw_omega_,
                     now_param_.now_yaw_omega_,
                     dt_,
-                    0.00000);
+                    limit_.J_yaw_);
 
-                tar_param_.target_pitch_omega_ = pid_pitch_angle_.Calculate(
-                    tar_param_.target_pitch_angle_, now_param_.now_pitch_angle_,
-                    dt_);
+                tar_param_.target_pitch_omega_ =
+                    pid_pitch_angle_.Calculate(
+                        tar_param_.target_pitch_angle_,
+                        now_param_.now_pitch_angle_,
+                        dt_);
 
                 output_pitch_ = FeedforwardControl(
                     tar_param_.target_pitch_omega_,
                     now_param_.now_pitch_omega_,
                     dt_,
-                    0.00000);
+                    limit_.J_pitch_);
 
                 // 速度环计算
                 output_yaw_ += (pid_yaw_omega_.Calculate(
@@ -491,8 +502,6 @@ public:
                 // 力矩输出到电机([输出扭矩],[减速比])
                 motor_yaw_->TorqueControl((-1.0f * output_yaw_), 1.0f);
                 motor_pitch_->TorqueControl((1.0f * output_pitch_), 1.0f);
-                // 达妙电机控制函数
-                // dmmotor_pitch->MITContorl(0,0,0,0,output_pitch_);
                 enable_flag_ = 1;
             }
                 break;
@@ -561,7 +570,7 @@ public:
             }
         }
         else if(current_mode_ == INDEPENDENT) {
-            if (mode == AUTOAIM) {
+            if (mode == AUTOAIM || mode == RELAX) {
                 tar_param_.target_yaw_angle_ = now_param_.now_yaw_angle_;
                 tar_param_.target_pitch_angle_ = now_param_.now_pitch_angle_;
             }
@@ -613,8 +622,16 @@ public:
     }
 
 private:
-    float j_yaw_ = 0.0002f;
-    float j_pitch_ = 0.0003f;
+    // 命令模块实例
+    CMD &cmd_;
+    // PID声明
+    LibXR::PID<float> pid_yaw_angle_;
+    LibXR::PID<float> pid_pitch_angle_;
+    LibXR::PID<float> pid_yaw_omega_;
+    LibXR::PID<float> pid_pitch_omega_;
+    // 电机
+    RMMotor *motor_yaw_;
+    RMMotor *motor_pitch_;
 
     // 云台命令Topic名称
     const char *gimbal_cmd_name_;
@@ -654,22 +671,10 @@ private:
 
     // 给底盘传的云台角度
     LibXR::Topic topic_yaw_angle_ =
-        LibXR::Topic::CreateTopic<float>("yaw_angle");
+        LibXR::Topic::CreateTopic<float>("chassis_yaw_");
     LibXR::Topic topic_pitch_angle_ =
-        LibXR::Topic::CreateTopic<float>("pitch_angle");
+        LibXR::Topic::CreateTopic<float>("chassis_pitch_");
 
-    // PID声明
-    LibXR::PID<float> pid_yaw_angle_;
-    LibXR::PID<float> pid_pitch_angle_;
-    LibXR::PID<float> pid_yaw_omega_;
-    LibXR::PID<float> pid_pitch_omega_;
-    // 电机
-    RMMotor *motor_yaw_;
-    RMMotor *motor_pitch_;
-    //DMMotor *dmmotor_pitch_;
-
-    // 命令模块实例
-    CMD &cmd_;
     // 云台命令数据
     CMD::GimbalCMD cmd_data_;
     // 云台控制线程
