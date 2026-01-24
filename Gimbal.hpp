@@ -489,8 +489,8 @@ public:
                 output_yaw_ = std::clamp((output_yaw_), -(MAX_CURRENT*TORQUE_CONSTANT), (MAX_CURRENT*TORQUE_CONSTANT));
                 output_pitch_ = std::clamp((output_pitch_), -(MAX_CURRENT*TORQUE_CONSTANT), (MAX_CURRENT*TORQUE_CONSTANT));
                 // 力矩输出到电机([输出扭矩],[减速比])
-                motor_yaw_->TorqueControl((-0.0f * output_yaw_), 1.0f);
-                motor_pitch_->TorqueControl((0.0f * output_pitch_), 1.0f);
+                motor_yaw_->TorqueControl((-1.0f * output_yaw_), 1.0f);
+                motor_pitch_->TorqueControl((1.0f * output_pitch_), 1.0f);
                 // 达妙电机控制函数
                 // dmmotor_pitch->MITContorl(0,0,0,0,output_pitch_);
                 enable_flag_ = 1;
