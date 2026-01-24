@@ -103,7 +103,6 @@ depends: []
 #include "mutex.hpp"
 #include "pid.hpp"
 #include "semaphore.hpp"
-#include "stm32f4xx_hal.h"
 #include "thread.hpp"
 #include "timebase.hpp"
 #include "transform.hpp"
