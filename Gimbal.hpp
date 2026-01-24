@@ -664,6 +664,6 @@ class Gimbal : public LibXR::Application {
   Eigen::Matrix<float, 3, 1> gyro_data_, accl_data_;
   // 欧拉角数据
   LibXR::EulerAngle<float> euler_;
-
+ 
   LibXR::Mutex mutex_;
 };
