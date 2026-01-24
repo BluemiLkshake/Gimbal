@@ -504,8 +504,6 @@ class Gimbal : public LibXR::Application {
       default:
         break;
     }
-    // 查看获取到的角速度数据
-    gyro_yaw_ = static_cast<float>(gyro_data_.y());
   }
 
   /**
