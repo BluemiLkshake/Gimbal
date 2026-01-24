@@ -47,22 +47,22 @@ constructor_args:
       min_yaw_: 0.0
       reverse_pitch_: false
       reverse_yaw_: false
-      J_pitch_: 0.0f
-      J_yaw_: 0.0f
+      J_pitch_: 0.0
+      J_yaw_: 0.0
   - now_param:
-      now_pitch_angle_: 0.0f;
-      now_yaw_angle_: 0.0f;
-      now_pitch_omega_: 0.0f;
-      now_yaw_omega_: 0.0f;
-      now_pitch_current_: 0.0f;
-      now_yaw_current_: 0.0f;
-  - tar_patam:
-      target_yaw_angle_: 0.0f;
-      target_pitch_angle_: 0.0f;
-      target_yaw_omega_: 0.0f;
-      target_pitch_omega_: 0.0f;
-      target_yaw_current_: 0.0f;
-      target_pitch_current_: 0.0f;
+      now_pitch_angle_: 0.0
+      now_yaw_angle_: 0.0
+      now_pitch_omega_: 0.0
+      now_yaw_omega_: 0.0
+      now_pitch_current_: 0.0
+      now_yaw_current_: 0.0
+  - tar_param:
+      target_yaw_angle_: 0.0
+      target_pitch_angle_: 0.0
+      target_yaw_omega_: 0.0
+      target_pitch_omega_: 0.0
+      target_yaw_current_: 0.0
+      target_pitch_current_: 0.0
   - gimbal_cmd_topic_name: gimbal_cmd
   - accl_topic_name: bmi088_accl
   - euler_topic_name: ahrs_euler
@@ -427,12 +427,12 @@ class Gimbal : public LibXR::Application {
   void OutputToDynamics() {
     /*达妙电机使能标志位*/
     /*让使能命令尽量只发一遍*/
-    if (this->enable_flag_ == 1) {
-      if (this->dm_motor_flag_ == 0) {
+    if (this->enable_flag_ == true) {
+      if (this->dm_motor_flag_ == false) {
         for (int i = 0; i < 2; i++) {
           // 达妙电机使能
           // 在这里添加达妙电机使能命令
-          this->dm_motor_flag_ = 1;
+          this->dm_motor_flag_ = true;
         }
       }
     }
@@ -442,8 +442,8 @@ class Gimbal : public LibXR::Application {
         motor_pitch_->Relax();
         // 达妙电机失能
         // 在这里添加达妙电机失能命令
-        enable_flag_ = 0;
-        dm_motor_flag_ = 0;
+        enable_flag_ = false;
+        dm_motor_flag_ = false;
       } break;
       case INDEPENDENT: {
         // 串级PID位置外环 角速度内环 + 力矩前馈
@@ -479,7 +479,7 @@ class Gimbal : public LibXR::Application {
         // 力矩输出到电机([输出扭矩],[减速比])
         motor_yaw_->TorqueControl((-1.0f * output_yaw_), 1.0f);
         motor_pitch_->TorqueControl((1.0f * output_pitch_), 1.0f);
-        enable_flag_ = 1;
+        enable_flag_ = true;
       } break;
       case AUTOAIM: {
         // 串级PID角度外环,角速度内环
@@ -499,7 +499,7 @@ class Gimbal : public LibXR::Application {
         // 输出力矩到电机
         motor_yaw_->TorqueControl((-1.0f * output_yaw_), 1.0f);
         motor_pitch_->TorqueControl((1.0f * output_pitch_), 1.0f);
-        enable_flag_ = 1;
+        enable_flag_ = true;
       } break;
       default:
         break;
@@ -664,6 +664,6 @@ class Gimbal : public LibXR::Application {
   Eigen::Matrix<float, 3, 1> gyro_data_, accl_data_;
   // 欧拉角数据
   LibXR::EulerAngle<float> euler_;
- 
+
   LibXR::Mutex mutex_;
 };
