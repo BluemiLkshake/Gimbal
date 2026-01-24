@@ -89,6 +89,7 @@ depends: []
 
 #include "BMI088.hpp"
 #include "CMD.hpp"
+#include "DMMotor.hpp"
 #include "Eigen/Core"
 #include "MadgwickAHRS.hpp"
 #include "RMMotor.hpp"

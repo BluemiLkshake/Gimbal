@@ -59,6 +59,12 @@ jobs:
           repository: QDU-Robomaster/RMMotor
           path: Modules/RMMotor
 
+      - name: Checkout DMMotor module
+        uses: actions/checkout@v4
+        with:
+          repository: QDU-Robomaster/DMMotor
+          path: Modules/DMMotor
+
       - name: Checkout CMD module
         uses: actions/checkout@v4
         with:
