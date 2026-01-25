@@ -112,13 +112,10 @@ class Gimbal : public LibXR::Application {
   };
 
   struct TarParam {
-    /*yaw轴目标角度(rad)*/
     float target_yaw_angle_ = 0.0f;
     float target_pitch_angle_ = 0.0f;
-    /*yaw轴目标角速度(rad/s)*/
     float target_yaw_omega_ = 0.0f;
     float target_pitch_omega_ = 0.0f;
-    /*yaw轴目标输出电流(A)*/
     float target_yaw_current_ = 0.0f;
     float target_pitch_current_ = 0.0f;
   };
@@ -128,7 +125,6 @@ class Gimbal : public LibXR::Application {
     float min_pitch_ = 0.0f;
     float max_yaw_ = 0.0f;
     float min_yaw_ = 0.0f;
-    /*与限位有关pitch轴转动方向*/
     bool reverse_pitch_ = false;
     bool reverse_yaw_ = false;
     float J_pitch_ = 0.0f;
@@ -288,7 +284,6 @@ class Gimbal : public LibXR::Application {
     last_yaw_omega_ = now_param_.now_yaw_omega_;
     last_pitch_omega_ = now_param_.now_pitch_omega_;
 
-    /*发布云台当前角度给底盘*/
     topic_yaw_angle_.Publish(now_param_.now_yaw_angle_);
     topic_pitch_angle_.Publish(now_param_.now_pitch_angle_);
   }
@@ -395,10 +390,10 @@ class Gimbal : public LibXR::Application {
         /*速度环计算*/
         output_yaw_ += (pid_yaw_omega_.Calculate(tar_param_.target_yaw_omega_,
                                                  gyro_data_.z(), dt_));
-                                                 
+
         output_pitch_ += (pid_pitch_omega_.Calculate(
             tar_param_.target_pitch_omega_, -gyro_data_.y(), dt_));
-        /*限幅*/
+
         output_yaw_ =
             std::clamp((output_yaw_), -(MAX_CURRENT * TORQUE_CONSTANT),
                        (MAX_CURRENT * TORQUE_CONSTANT));
