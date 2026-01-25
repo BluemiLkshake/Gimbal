@@ -3,16 +3,11 @@
 // clang-format off
 /* === MODULE MANIFEST V2 ===
 module_description: No description provided
-module_description: No description provided
 constructor_args:
   - cmd: '@cmd'
   - task_stack_depth: 4096
   - pid_yaw_angle_param:
-  - cmd: '@cmd'
-  - task_stack_depth: 4096
-  - pid_yaw_angle_param:
       k: 1.0
-      p: 0.5
       p: 0.5
       i: 0.0
       d: 0.0
@@ -20,11 +15,7 @@ constructor_args:
       out_limit: 50.0
       cycle: true
   - pid_pitch_angle_param:
-      out_limit: 50.0
-      cycle: true
-  - pid_pitch_angle_param:
       k: 1.0
-      p: 0.5
       p: 0.5
       i: 0.0
       d: 0.0
@@ -32,43 +23,21 @@ constructor_args:
       out_limit: 50.0
       cycle: true
   - pid_yaw_omega_param:
-      out_limit: 50.0
-      cycle: true
-  - pid_yaw_omega_param:
       k: 1.0
-      p: 0.5
       p: 0.5
       i: 0.0
       d: 0.0
       i_limit: 0.0
       out_limit: 3.0
-      out_limit: 3.0
       cycle: false
   - pid_pitch_omega_param:
-  - pid_pitch_omega_param:
       k: 1.0
-      p: 0.5
       p: 0.5
       i: 0.0
       d: 0.0
       i_limit: 0.0
       out_limit: 3.0
-      out_limit: 3.0
       cycle: false
-  - motor_pitch: '@&motor_pit'
-  - motor_yaw: '@&motor_yaw'
-  - limit:
-      max_pitch_angle_: 0.0
-      min_pitch_angle_: 0.0
-      max_yaw_angle_: 0.0
-      min_yaw_angle_: 0.0
-      reverse_pitch_: false
-      reverse_yaw_: false
-      J_pitch_: 0.0
-      J_yaw_: 0.0
-  - gimbal_cmd_topic_name: gimbal_cmd
-  - accl_topic_name: bmi088_accl
-  - euler_topic_name: ahrs_euler
   - motor_pitch: '@&motor_pit'
   - motor_yaw: '@&motor_yaw'
   - limit:
@@ -86,15 +55,12 @@ constructor_args:
 template_args: []
 required_hardware: []
 depends: []
-required_hardware: []
-depends: []
 === END MANIFEST === */
 // clang-format on
 
 #include <cstdint>
 
 #include "CMD.hpp"
-#include "DMMotor.hpp"
 #include "DMMotor.hpp"
 #include "RMMotor.hpp"
 #include "app_framework.hpp"
@@ -113,40 +79,10 @@ class Gimbal : public LibXR::Application {
     SET_MODE_RELAX,
     SET_MODE_INDEPENDENT,
     SET_MODE_AUTOAIM,
-    SET_MODE_INDEPENDENT,
-    SET_MODE_AUTOAIM,
   };
 
   typedef enum : uint8_t { RELAX, INDEPENDENT, AUTOAIM } GimbalMode;
-  typedef enum : uint8_t { RELAX, INDEPENDENT, AUTOAIM } GimbalMode;
 
-  struct NowParam {
-    float now_pitch_angle_ = 0.0f;
-    float now_yaw_angle_ = 0.0f;
-    float now_pitch_omega_ = 0.0f;
-    float now_yaw_omega_ = 0.0f;
-    float now_pitch_current_ = 0.0f;
-    float now_yaw_current_ = 0.0f;
-  };
-
-  struct TarParam {
-    float target_yaw_angle_ = 0.0f;
-    float target_pitch_angle_ = 0.0f;
-    float target_yaw_omega_ = 0.0f;
-    float target_pitch_omega_ = 0.0f;
-    float target_yaw_current_ = 0.0f;
-    float target_pitch_current_ = 0.0f;
-  };
-
-  struct Limit {
-    float max_pitch_angle_ = 0.0f;
-    float min_pitch_angle_ = 0.0f;
-    float max_yaw_angle_ = 0.0f;
-    float min_yaw_angle_ = 0.0f;
-    bool reverse_pitch_ = false;
-    bool reverse_yaw_ = false;
-    float J_pitch_ = 0.0f;
-    float J_yaw_ = 0.0f;
   struct NowParam {
     float now_pitch_angle_ = 0.0f;
     float now_yaw_angle_ = 0.0f;
@@ -178,11 +114,7 @@ class Gimbal : public LibXR::Application {
 
   /**
    * @brief 构造函数初始化数据成员
-   * @brief 构造函数初始化数据成员
    *
-   * @param hw 硬件容器
-   * @param app 应用管理器
-   * @param cmd 命令模块实例
    * @param hw 硬件容器
    * @param app 应用管理器
    * @param cmd 命令模块实例
@@ -194,15 +126,7 @@ class Gimbal : public LibXR::Application {
    * @param gimbal_cmd_topic_name 云台命令Topic名称
    * @param accl_topic_name  加速度计数据Topic名称
    * @param euler_topic_name 欧拉角数据Topic名称
-   * @param pid_yaw_angle_param   Yaw轴角度环PID参数
-   * @param pid_pitch_angle_param Pitch轴角度环PID参数
-   * @param pid_yaw_omega_param   Yaw轴角速度环PID参数
-   * @param pid_pitch_omega_param Pitch轴角速度环PID参数
-   * @param gimbal_cmd_topic_name 云台命令Topic名称
-   * @param accl_topic_name  加速度计数据Topic名称
-   * @param euler_topic_name 欧拉角数据Topic名称
    */
-  Gimbal(LibXR::HardwareContainer &hw, LibXR::ApplicationManager &app, CMD &cmd,
   Gimbal(LibXR::HardwareContainer &hw, LibXR::ApplicationManager &app, CMD &cmd,
          uint32_t task_stack_depth,
          LibXR::PID<float>::Param pid_yaw_angle_param,
@@ -223,10 +147,6 @@ class Gimbal : public LibXR::Application {
         accl_name_(accl_topic_name),
         euler_name_(euler_topic_name),
         limit_(limit) {
-        gimbal_cmd_name_(gimbal_cmd_topic_name),
-        accl_name_(accl_topic_name),
-        euler_name_(euler_topic_name),
-        limit_(limit) {
     UNUSED(hw);
     UNUSED(app);
 
@@ -238,7 +158,6 @@ class Gimbal : public LibXR::Application {
         },
         this);
 
-    cmd_.GetEvent().Register(CMD::CMD_EVENT_LOST_CTRL, lost_ctrl_callback);
     cmd_.GetEvent().Register(CMD::CMD_EVENT_LOST_CTRL, lost_ctrl_callback);
 
     auto callback = LibXR::Callback<uint32_t>::Create(
@@ -257,22 +176,12 @@ class Gimbal : public LibXR::Application {
 
     thread_.Create(this, ThreadFunc, "GimbalThread", task_stack_depth,
                    LibXR::Thread::Priority::MEDIUM);
-    thread_.Create(this, ThreadFunc, "GimbalThread", task_stack_depth,
-                   LibXR::Thread::Priority::MEDIUM);
   }
 
   /**
    * @brief 云台控制线程函数
-   * @brief 云台控制线程函数
    */
   static void ThreadFunc(Gimbal *gimbal) {
-    LibXR::Topic::ASyncSubscriber<CMD::GimbalCMD> cmd_suber(
-        gimbal->gimbal_cmd_name_);
-    LibXR::Topic::ASyncSubscriber<Eigen::Matrix<float, 3, 1>> accl_suber(
-        gimbal->accl_name_);
-    LibXR::Topic::ASyncSubscriber<LibXR::EulerAngle<float>> euler_suber(
-        gimbal->euler_name_);
-    LibXR::Topic::ASyncSubscriber<Eigen::Matrix<float, 3, 1>> gyro_suber(
     LibXR::Topic::ASyncSubscriber<CMD::GimbalCMD> cmd_suber(
         gimbal->gimbal_cmd_name_);
     LibXR::Topic::ASyncSubscriber<Eigen::Matrix<float, 3, 1>> accl_suber(
@@ -287,11 +196,6 @@ class Gimbal : public LibXR::Application {
     euler_suber.StartWaiting();
     gyro_suber.StartWaiting();
 
-    cmd_suber.StartWaiting();
-    accl_suber.StartWaiting();
-    euler_suber.StartWaiting();
-    gyro_suber.StartWaiting();
-
     while (true) {
       auto last_time = LibXR::Timebase::GetMilliseconds();
 
@@ -299,20 +203,7 @@ class Gimbal : public LibXR::Application {
       if (cmd_suber.Available()) {
         gimbal->cmd_data_ = cmd_suber.GetData();
         cmd_suber.StartWaiting();
-      auto last_time = LibXR::Timebase::GetMilliseconds();
-
-      gimbal->mutex_.Lock();
-      if (cmd_suber.Available()) {
-        gimbal->cmd_data_ = cmd_suber.GetData();
-        cmd_suber.StartWaiting();
       }
-      if (accl_suber.Available()) {
-        gimbal->accl_data_ = accl_suber.GetData();
-        accl_suber.StartWaiting();
-      }
-      if (euler_suber.Available()) {
-        gimbal->euler_ = euler_suber.GetData();
-        euler_suber.StartWaiting();
       if (accl_suber.Available()) {
         gimbal->accl_data_ = accl_suber.GetData();
         accl_suber.StartWaiting();
@@ -324,19 +215,11 @@ class Gimbal : public LibXR::Application {
       if (gyro_suber.Available()) {
         gimbal->gyro_data_ = gyro_suber.GetData();
         gyro_suber.StartWaiting();
-      if (gyro_suber.Available()) {
-        gimbal->gyro_data_ = gyro_suber.GetData();
-        gyro_suber.StartWaiting();
       }
-
-      gimbal->Update();
-      gimbal->SetpointFromCMD();
 
       gimbal->Update();
       gimbal->SetpointFromCMD();
       gimbal->mutex_.Unlock();
-      gimbal->OutputToDynamics();
-      gimbal->thread_.SleepUntil(last_time, 2.0f);
       gimbal->OutputToDynamics();
       gimbal->thread_.SleepUntil(last_time, 2.0f);
     }
@@ -344,12 +227,7 @@ class Gimbal : public LibXR::Application {
 
   /**
    * @brief 更新函数
-   * @brief 更新函数
    */
-  void Update() {
-    motor_yaw_->Update();
-    motor_pitch_->Update();
-
   void Update() {
     motor_yaw_->Update();
     motor_pitch_->Update();
@@ -594,7 +472,6 @@ class Gimbal : public LibXR::Application {
     pid_yaw_angle_.Reset();
     pid_yaw_omega_.Reset();
     mutex_.Lock();
-    // 更新当前mode状态
     current_mode_ = mode;
     mutex_.Unlock();
   }
