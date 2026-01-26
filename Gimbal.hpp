@@ -73,7 +73,6 @@ static constexpr float TORQUE_CONSTANT = 0.741f;
 static constexpr float MAX_CURRENT = 3.0f;
 static constexpr float MAX_TORQUE = 10.0f;
 static constexpr int FILTER_SIZE = 6;
-static constexpr float YAW_STATIC_POINT = 0.0f;
 
 template <typename MotorTypePitch, typename MotorTypeYaw>
 class Gimbal : public LibXR::Application {
@@ -174,6 +173,8 @@ class Gimbal : public LibXR::Application {
 
     gimbal_event_.Register(static_cast<uint32_t>(GimbalEvent::SET_MODE_RELAX),
                            callback);
+    gimbal_event_.Register(
+        static_cast<uint32_t>(GimbalEvent::SET_MODE_INDEPENDENT), callback);
     gimbal_event_.Register(
         static_cast<uint32_t>(GimbalEvent::SET_MODE_INDEPENDENT), callback);
     gimbal_event_.Register(static_cast<uint32_t>(GimbalEvent::SET_MODE_AUTOAIM),
@@ -351,6 +352,10 @@ class Gimbal : public LibXR::Application {
           motor_yaw_->Disable();
         } else if constexpr (std::is_same_v<MotorTypeYaw, RMMotor>) {
           motor_yaw_->Relax();
+        if constexpr (std::is_same_v<MotorTypeYaw, DMMotor>) {
+          motor_yaw_->Disable();
+        } else if constexpr (std::is_same_v<MotorTypeYaw, RMMotor>) {
+          motor_yaw_->Relax();
         }
 
         if constexpr (std::is_same_v<MotorTypePitch, DMMotor>) {
@@ -366,6 +371,7 @@ class Gimbal : public LibXR::Application {
         /*位置环+前馈*/
         tar_param_.target_yaw_omega_ = pid_yaw_angle_.Calculate(
             tar_param_.target_yaw_angle_, now_param_.now_yaw_angle_, dt_);
+            tar_param_.target_yaw_angle_, now_param_.now_yaw_angle_, dt_);
 
         output_yaw_ =
             FeedforwardControl(tar_param_.target_yaw_omega_,
@@ -374,6 +380,7 @@ class Gimbal : public LibXR::Application {
                                limit_.J_yaw_);
 
         tar_param_.target_pitch_omega_ = pid_pitch_angle_.Calculate(
+            tar_param_.target_pitch_angle_, now_param_.now_pitch_angle_, dt_);
             tar_param_.target_pitch_angle_, now_param_.now_pitch_angle_, dt_);
 
         output_pitch_ = FeedforwardControl(tar_param_.target_pitch_omega_,
