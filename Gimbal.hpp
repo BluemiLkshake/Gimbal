@@ -357,22 +357,27 @@ class Gimbal : public LibXR::Application {
         tar_param_.target_yaw_omega_ = pid_yaw_angle_.Calculate(
             tar_param_.target_yaw_angle_, now_param_.now_yaw_angle_, dt_);
 
-        output_yaw_ =
-            FeedforwardControl(tar_param_.target_yaw_omega_,
-                               now_param_.now_yaw_omega_,
-                               dt_,
-                               limit_.J_yaw_);
+        output_yaw_ = FeedforwardControl(
+            tar_param_.target_yaw_omega_,
+            now_param_.now_yaw_omega_,
+            dt_,
+            limit_.J_yaw_);
 
         tar_param_.target_pitch_omega_ = pid_pitch_angle_.Calculate(
-            tar_param_.target_pitch_angle_, now_param_.now_pitch_angle_, dt_);
+            tar_param_.target_pitch_angle_,
+            now_param_.now_pitch_angle_,
+            dt_);
 
-        output_pitch_ = FeedforwardControl(tar_param_.target_pitch_omega_,
-                                           now_param_.now_pitch_omega_,
-                                           dt_,
-                                           limit_.J_pitch_);
+        output_pitch_ = FeedforwardControl(
+            tar_param_.target_pitch_omega_,
+            now_param_.now_pitch_omega_,
+            dt_,
+            limit_.J_pitch_);
         /*速度环计算*/
-        output_yaw_ += (pid_yaw_omega_.Calculate(tar_param_.target_yaw_omega_,
-                                                 gyro_data_.z(), dt_));
+        output_yaw_ += (pid_yaw_omega_.Calculate(
+            tar_param_.target_yaw_omega_,
+            gyro_data_.z(),
+            dt_));
 
         output_pitch_ += (pid_pitch_omega_.Calculate(
             tar_param_.target_pitch_omega_,
@@ -544,7 +549,7 @@ class Gimbal : public LibXR::Application {
   float last_yaw_omega_ = 0.0f;
   float last_pitch_omega_ = 0.0f;
 
-  GimbalMode current_mode_ = GimbalModforke::RELAX;
+  GimbalMode current_mode_ = GimbalMode::RELAX;
 
   float gyro_buffer_[FILTER_SIZE];
   float filtered_gyro_ = 0.0f;
