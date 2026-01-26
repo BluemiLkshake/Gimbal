@@ -49,6 +49,7 @@ constructor_args:
       reverse_yaw_limit_: false
       J_pitch_: 0.0
       J_yaw_: 0.0
+  - zero_point: 0.0
   - gimbal_cmd_topic_name: gimbal_cmd
   - accl_topic_name: bmi088_accl
   - euler_topic_name: ahrs_euler
@@ -64,6 +65,7 @@ depends: []
 #include "DMMotor.hpp"
 #include "RMMotor.hpp"
 #include "app_framework.hpp"
+#include "cycle_value.hpp"
 #include "pid.hpp"
 
 static constexpr float GIMBAL_MAX_SPEED = static_cast<float>(M_2PI) * 1.5f;
@@ -71,6 +73,7 @@ static constexpr float TORQUE_CONSTANT = 0.741f;
 static constexpr float MAX_CURRENT = 3.0f;
 static constexpr float MAX_TORQUE = 10.0f;
 static constexpr int FILTER_SIZE = 6;
+static constexpr float YAW_STATIC_POINT = 0.0f;
 
 template <typename MotorTypePitch, typename MotorTypeYaw>
 class Gimbal : public LibXR::Application {
@@ -134,6 +137,7 @@ class Gimbal : public LibXR::Application {
          LibXR::PID<float>::Param pid_yaw_omega_param,
          LibXR::PID<float>::Param pid_pitch_omega_param,
          MotorTypePitch *motor_pitch, MotorTypeYaw *motor_yaw, Limit limit,
+         float zero_point,
          const char *gimbal_cmd_topic_name, const char *accl_topic_name,
          const char *euler_topic_name)
       : cmd_(cmd),
@@ -146,7 +150,8 @@ class Gimbal : public LibXR::Application {
         gimbal_cmd_name_(gimbal_cmd_topic_name),
         accl_name_(accl_topic_name),
         euler_name_(euler_topic_name),
-        limit_(limit) {
+        limit_(limit),
+        zero_point_(zero_point) {
     UNUSED(hw);
     UNUSED(app);
 
@@ -247,8 +252,13 @@ class Gimbal : public LibXR::Application {
     last_yaw_omega_ = now_param_.now_yaw_omega_;
     last_pitch_omega_ = now_param_.now_pitch_omega_;
 
-    topic_yaw_angle_.Publish(now_param_.now_yaw_angle_);
-    topic_pitch_angle_.Publish(now_param_.now_pitch_angle_);
+    float yaw_angle = motor_yaw_->GetAngle();
+    float pit_angle = motor_pitch_->GetAngle();
+    float delta_angle = LibXR::CycleValue(motor_yaw_->GetAngle() - zero_point_);
+
+    topic_yaw_angle_.Publish(yaw_angle);
+    topic_pitch_angle_.Publish(pit_angle);
+    topic_delta_yaw_.Publish(delta_angle);
   }
 
   /**
@@ -357,27 +367,22 @@ class Gimbal : public LibXR::Application {
         tar_param_.target_yaw_omega_ = pid_yaw_angle_.Calculate(
             tar_param_.target_yaw_angle_, now_param_.now_yaw_angle_, dt_);
 
-        output_yaw_ = FeedforwardControl(
-            tar_param_.target_yaw_omega_,
-            now_param_.now_yaw_omega_,
-            dt_,
-            limit_.J_yaw_);
+        output_yaw_ =
+            FeedforwardControl(tar_param_.target_yaw_omega_,
+                               now_param_.now_yaw_omega_,
+                               dt_,
+                               limit_.J_yaw_);
 
         tar_param_.target_pitch_omega_ = pid_pitch_angle_.Calculate(
-            tar_param_.target_pitch_angle_,
-            now_param_.now_pitch_angle_,
-            dt_);
+            tar_param_.target_pitch_angle_, now_param_.now_pitch_angle_, dt_);
 
-        output_pitch_ = FeedforwardControl(
-            tar_param_.target_pitch_omega_,
-            now_param_.now_pitch_omega_,
-            dt_,
-            limit_.J_pitch_);
+        output_pitch_ = FeedforwardControl(tar_param_.target_pitch_omega_,
+                                           now_param_.now_pitch_omega_,
+                                           dt_,
+                                           limit_.J_pitch_);
         /*速度环计算*/
-        output_yaw_ += (pid_yaw_omega_.Calculate(
-            tar_param_.target_yaw_omega_,
-            gyro_data_.z(),
-            dt_));
+        output_yaw_ += (pid_yaw_omega_.Calculate(tar_param_.target_yaw_omega_,
+                                                 gyro_data_.z(), dt_));
 
         output_pitch_ += (pid_pitch_omega_.Calculate(
             tar_param_.target_pitch_omega_,
@@ -556,11 +561,14 @@ class Gimbal : public LibXR::Application {
 
   float output_yaw_ = 0.0f;
   float output_pitch_ = 0.0f;
+  float zero_point_ = 0.0f;
 
   LibXR::Topic topic_yaw_angle_ =
       LibXR::Topic::CreateTopic<float>("chassis_yaw");
   LibXR::Topic topic_pitch_angle_ =
       LibXR::Topic::CreateTopic<float>("chassis_pitch");
+  LibXR::Topic topic_delta_yaw_ =
+      LibXR::Topic::CreateTopic<float>("delta_yaw");
 
   CMD::GimbalCMD cmd_data_;
   LibXR::Thread thread_;
