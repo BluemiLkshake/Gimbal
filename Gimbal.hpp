@@ -53,9 +53,7 @@ constructor_args:
   - gimbal_cmd_topic_name: gimbal_cmd
   - accl_topic_name: bmi088_accl
   - euler_topic_name: ahrs_euler
-template_args:
-  - MotorTypePitch: ‘DMMotor‘
-  - MotorTypeYaw: ’DMMotor‘
+template_args: []
 required_hardware: []
 depends: []
 === END MANIFEST === */
