@@ -136,8 +136,8 @@ class Gimbal : public LibXR::Application {
     cmd_yaw_.reduction_ratio = 1.0f;
     cmd_pit_.reduction_ratio = 1.0f;
 
-    motor_yaw_base_ = static_cast<Motor *>(motor_yaw_);
-    motor_pit_base_ = static_cast<Motor *>(motor_pit_);
+    motor_yaw_base_ = motor_yaw_;
+    motor_pit_base_ = motor_pit_;
     auto lost_ctrl_callback = LibXR::Callback<uint32_t>::Create(
         [](bool in_isr, Gimbal *gimbal, uint32_t event_id) {
           UNUSED(in_isr);
@@ -400,6 +400,7 @@ class Gimbal : public LibXR::Application {
         output_pit_ = (pid_pit_omega_.Calculate(tar_param_.target_pit_omega_,
                                                 gyro_data_.y(), dt_));
 
+        /*统一通过 Motor::MotorCmd 下发力矩命令*/
         {
           cmd_yaw_.torque = output_yaw_;
           if constexpr (std::is_same_v<MotorTypeYaw, RMMotor>) {
