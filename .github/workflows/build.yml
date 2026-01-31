@@ -63,6 +63,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: QDU-Robomaster/RMMotor
+          ref: dev
           path: Modules/RMMotor
 
       - name: Checkout DMMotor module
