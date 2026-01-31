@@ -136,8 +136,8 @@ class Gimbal : public LibXR::Application {
     cmd_yaw_.reduction_ratio = 1.0f;
     cmd_pit_.reduction_ratio = 1.0f;
 
-    motor_yaw_base_ = motor_yaw_;
-    motor_pit_base_ = motor_pit_;
+    motor_yaw_base_ = reinterpret_cast<Motor *>(motor_yaw_);
+    motor_pit_base_ = reinterpret_cast<Motor *>(motor_pit_);
     auto lost_ctrl_callback = LibXR::Callback<uint32_t>::Create(
         [](bool in_isr, Gimbal *gimbal, uint32_t event_id) {
           UNUSED(in_isr);
