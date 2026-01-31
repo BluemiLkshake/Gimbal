@@ -53,41 +53,18 @@ jobs:
       - name: Pull libxr to ./libxr
         run: git clone --depth=1 https://github.com/Jiu-xiao/libxr ./libxr
 
-      - name: Checkout Motor module
-        uses: actions/checkout@v4
-        with:
-          repository: QDU-Robomaster/Motor
-          path: Modules/Motor
-
       - name: Checkout RMMotor module
         uses: actions/checkout@v4
         with:
           repository: QDU-Robomaster/RMMotor
           path: Modules/RMMotor
 
-      - name: Checkout DMMotor module
+      - name: Checkout Motor module
         uses: actions/checkout@v4
         with:
-          repository: QDU-Robomaster/DMMotor
-          path: Modules/DMMotor
+          repository: QDU-Robomaster/Motor
+          path: Modules/Motor
 
-      - name: Checkout CMD module
-        uses: actions/checkout@v4
-        with:
-          repository: QDU-Robomaster/CMD
-          path: Modules/CMD
-
-      - name: Checkout BMI088 module
-        uses: actions/checkout@v4
-        with:
-          repository: xrobot-org/BMI088
-          path: Modules/BMI088
-
-      - name: Checkout MadgwickAHRS module
-        uses: actions/checkout@v4
-        with:
-          repository: xrobot-org/MadgwickAHRS
-          path: Modules/MadgwickAHRS
 
       - name: Setup Python & Install deps
         run: |
@@ -98,7 +75,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install xrobot toolchain (assumes pyproject/tar.gz/pip install .)
+      - name: Install xrobot toolchain
         run: |
           pip3 install xrobot libxr
 
@@ -110,14 +87,9 @@ jobs:
         run: |
           xrobot_init_mod
 
-      - name: Add  modules
+      - name: Add BlinkLED module
         run: |
           xrobot_add_mod BlinkLED --instance-id BlinkLED_0
-          xrobot_add_mod RMMotor --instance-id motor_pit
-          xrobot_add_mod RMMotor --instance-id motor_yaw
-          xrobot_add_mod BMI088 --instance-id bmi088
-          xrobot_add_mod MadgwickAHRS --instance-id ahrs
-          xrobot_add_mod CMD --instance-id cmd
 
       - name: Add this repo module
         run: |
